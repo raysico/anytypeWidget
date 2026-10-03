@@ -479,6 +479,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // App 已在运行时再次双击图标 / Finder「打开」：后台组件没有 Dock 窗口可激活，
+    // 直接新建一个默认小组件窗口（多窗口=多进程，与「复制窗口」同一启动方式）
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        let newId = newInstanceId()
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-n", Bundle.main.bundlePath, "--args", "--instance", newId]
+        try? p.run()
+        return true
+    }
+
     var windowPosX: CGFloat = 0
     var windowPosY: CGFloat = 0
     var windowSizeW: CGFloat = 0
@@ -650,8 +661,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             w = min(max(w, 150), 800); h = min(max(h, 150), 600)
         }
-        let x = windowPosX != 0 ? windowPosX : screen.maxX - w - 24
-        let y = windowPosY != 0 ? windowPosY : screen.maxY - h - 24
+        var x = windowPosX != 0 ? windowPosX : screen.maxX - w - 24
+        var y = windowPosY != 0 ? windowPosY : screen.maxY - h - 24
+        // 屏幕外兜底：持久化位置可能来自已拔掉的外接显示器；若与任一显示器可见区域
+        // 的交集小到看不见（或完全不相交），回退到主屏右上角默认位，并写回以便持久化
+        let desired = NSRect(x: x, y: y, width: w, height: h)
+        let visibleEnough = NSScreen.screens.contains {
+            let inter = $0.visibleFrame.intersection(desired)
+            return inter.width > 120 && inter.height >= 60
+        }
+        if !visibleEnough {
+            x = screen.maxX - w - 24
+            y = screen.maxY - h - 24
+            windowPosX = x; windowPosY = y
+        }
         panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
         window.orderFrontRegardless()
     }
