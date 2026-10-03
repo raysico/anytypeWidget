@@ -24,7 +24,7 @@ anniversary set-mini <id> <是|否>      # 写回对象「迷你模式」字段
 anniversary inc-uses <id> [增量]       # 资产使用次数 +N（减一传 -1，默认 1）
 anniversary types                      # 列空间内所有对象类型
 anniversary widget <对象名> [模式]     # 开一个新小组件窗口绑定该对象
-anniversary panel [面板名]             # 开一个聚合面板窗口
+anniversary panel [面板名]             # 开一个聚合面板窗口(会在anytype回写新建一个类型为“聚合面板”的对象)
 anniversary panel-data <面板id>        # 读面板配置 + 成员行数据
 anniversary panel-set <面板id> '<属性json>'       # 改面板属性（排序/筛选/限制数量等）
 anniversary panel-set-types <面板id> <类型key逗号列表>  # 改面板成员类型
