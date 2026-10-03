@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# 编译产物
+*.app/
+CountdownWidget-bin
+CountdownWidget-jsdesignV1
+# 归档实验版源码（功能已合并进正式版，不公开）
+CountdownWidget_jsdesignV1.swift
+
+# Python
+__pycache__/
+*.pyc
+
+# 本地/编辑器资料
+.trae/
+布局思维导图/
+*.xmind
