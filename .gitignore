@@ -5,6 +5,8 @@
 *.app/
 CountdownWidget-bin
 CountdownWidget-jsdesignV1
+# Release 压缩包（作为 GitHub Release 附件发布，不入库）
+CountdownWidget-v*.zip
 # 归档实验版源码（功能已合并进正式版，不公开）
 CountdownWidget_jsdesignV1.swift
 
