@@ -6,41 +6,139 @@
 
 一组真正「跑在 any-sync 上」的桌面悬浮小组件：
 
-- **数据存哪**：每个纪念日/资产是一个 **Anytype 对象**（纪念日类型 `ji_nian_ri`、资产类型 `zi_chan`，聚合面板类型 `ju_he_mian_ban`），存放在官方客户端正在同步的空间里。官方客户端通过 your 部署的 any-sync 网络把对象同步到所有设备。
+- **数据存哪**：每个纪念日/资产是一个 **Anytype 对象**（纪念日类型 `ji_nian_ri`、资产类型 `zi_chan`，聚合面板类型 `ju_he_mian_ban`），存放在官方客户端正在同步的空间里。官方客户端通过你部署的 any-sync 网络把对象同步到所有设备。
 - **怎么读写**：命令行和小组件都走官方桌面端本地 API（`127.0.0.1:31009`），同步那块脏活由官方客户端搞定。
 - **跨设备同步**：任何设备改了对象（应用里改、或命令行改），小组件 60 秒内自动跟上。
 
 ***
 
-## 命令行（终端敲 `anniversary`）
+## 目录
+
+- [下载安装](#下载安装推荐无需编译)
+- [使用教程](#使用教程)
+- [功能参考](#功能参考桌面小组件)
+- [命令行](#命令行终端敲-anniversary)
+- [从源码构建](#从源码构建)
+- [文件与架构](#文件)
+
+## 下载安装（推荐，无需编译）
+
+**环境要求**：
+
+- Apple Silicon（M 系列）Mac、macOS 12 或更高；
+- 已安装并登录 [Anytype 桌面端](https://anytype.io/)（0.46 及以上版本，支持本地 API）；
+- 不需要 Python 环境，也不需要任何命令行依赖（发布包已内置数据脚本）。
+
+### 第 1 步：下载应用
+
+到 [Releases](https://github.com/raysico/anytypeWidget/releases) 下载最新的 `CountdownWidget-vX.Y.Z-macOS.zip`，解压后把 `CountdownWidget.app` 拖进「应用程序」文件夹。
+
+### 第 2 步：首次打开（处理安全提示）
+
+应用使用本地自签名（ad-hoc），未经过 Apple 公证，首次双击会提示「无法验证开发者」。任选其一放行：
+
+- **图形方式**：在「应用程序」里**右键点 `CountdownWidget.app` → 打开 → 再点「打开」**（只需一次，之后可正常双击）。
+- **命令行方式**：
 
 ```bash
-anniversary objects [类型key]          # 列对象（缺省纪念日；zi_chan=资产，ju_he_mian_ban=聚合面板）
-anniversary read-object <id>           # 读单个对象：{name, date_iso, color, icon, 偏好…}
-anniversary set-date <id> "2026-12-25 08:00"   # 改「纪念日日期」字段（本地时间）
-anniversary icon-image <id> [输出路径] # 取对象图标（file→下载图片；emoji→返回emoji）
-anniversary set-size <id> <宽> <高>    # 把当前宽度/当前高度写回对象
-anniversary set-mini <id> <是|否>      # 写回对象「迷你模式」字段
-anniversary inc-uses <id> [增量]       # 资产使用次数 +N（减一传 -1，默认 1）
-anniversary types                      # 列空间内所有对象类型
-anniversary widget <对象名> [模式]     # 开一个新小组件窗口绑定该对象
-anniversary panel [面板名]             # 开一个聚合面板窗口(会在anytype回写新建一个类型为“聚合面板”的对象)
-anniversary panel-data <面板id>        # 读面板配置 + 成员行数据
-anniversary panel-set <面板id> '<属性json>'       # 改面板属性（排序/筛选/限制数量等）
-anniversary panel-set-types <面板id> <类型key逗号列表>  # 改面板成员类型
-anniversary new-panel [名称]           # 新建聚合面板对象
+xattr -dr com.apple.quarantine /Applications/CountdownWidget.app
 ```
 
-模式：`正计日`（已经多少天）/ `倒计日`（还有多少天）/ `正计时`（多少小时）/ `倒计时`（还有多少小时）/ `周年计数`（已经多少周年）/ `最近重复日`（下一个同月日还有多少天）。
+> 应用是无 Dock 图标的后台悬浮组件（`LSUIElement`），启动后只看到桌面上的悬浮卡，Dock 与程序坞中不会出现图标——这是正常的。
 
-仅依赖 Python 3 标准库，无需 pip 安装任何包。安装到 PATH：
+### 第 3 步：在 Anytype 生成 API Key
+
+小组件通过本地 API 读取你的 Anytype 数据，需要一个 API Key（仅保存在本机）：
+
+1. 打开 Anytype 桌面端并登录；
+2. 打开 **设置（Settings）→ API Keys**（中文版为「设置 → API 密钥」）；
+3. 点击 **Create new（新建）**，起个名字（如 `macOS 小组件`）；
+4. 桌面端弹出 4 位验证码确认时，在应用内输入确认；
+5. 复制生成的 Key（形如 `zhSG/xxxx…=`，**只显示一次**）。
+
+> 旧版 Anytype 没有该入口时，可在桌面端运行时用浏览器打开 http://127.0.0.1:31009 ，按页面引导完成 4 位码授权后取得 Key。
+
+### 第 4 步：写入 Key 并完成初始化
+
+打开「终端」，执行（把 `<你的API Key>` 换成上一步复制的内容）：
 
 ```bash
-chmod +x anniversary.py
-ln -s "$PWD/anniversary.py" /usr/local/bin/anniversary   # 或 ln 到 ~/bin 等 PATH 目录
+/usr/bin/python3 /Applications/CountdownWidget.app/Contents/Resources/anniversary.py init --api-key <你的API Key>
 ```
 
-## macOS 桌面小组件（多实例）
+看到 `✅ 已初始化：space=…` 即成功。配置保存在 `~/.whynownote/wnn.json`（权限 600，不会上传到任何地方）。
+
+有多个 Anytype 空间时，用 `--space-id <空间id>` 指定；默认使用第一个空间。
+
+想在终端直接敲 `anniversary` 命令，可加软链（可选）：
+
+```bash
+ln -s /Applications/CountdownWidget.app/Contents/Resources/anniversary.py /usr/local/bin/anniversary
+```
+
+### 第 5 步：启动与多开
+
+- **双击 `CountdownWidget.app`** 即出现一个悬浮小组件窗口（默认绑定空间里第一个纪念日对象，右键即可改绑）；
+- **再次双击会再开一个新窗口**，每个窗口独立绑定对象、独立配置，想多开几个都行；
+- 窗口配置自动保存在 `~/.whynownote/widgets/<实例id>.json`，重启后位置/样式不变。
+
+## 使用教程
+
+### 5 分钟上手
+
+1. **在 Anytype 里准备对象**：新建一个对象，类型选「**纪念日**」，填写对象名称（如「恋爱纪念日」）与「纪念日日期」字段；可再设置颜色和图标。「资产」「聚合面板」同理，类型分别选对应名称。
+2. **双击启动** `CountdownWidget.app`，桌面出现悬浮卡。
+3. **绑定对象**：在卡片上**右键 → 选择对象**，点击目标对象；类型不对时先在右键 → 对象类型 中切换。
+4. **调整样式**：拖动卡片移动位置；右上角三条斜线抓手拖放调整大小；鼠标悬停在卡片上滚轮/双指滑动缩放字号；右键 → 迷你模式可切成单行小长条。
+
+### 日常交互速查
+
+| 操作 | 方式 |
+| --- | --- |
+| 移动窗口 | 按住卡片任意空白处拖动 |
+| 调整大小 | 拖右上角斜线抓手（资产卡仅可调宽）；右键可「锁定大小」 |
+| 整体缩放 | 卡片聚焦时滚轮 / 双指上下滑（0.7～1.8 倍，步进 0.05，自动记忆） |
+| 切换对象 | 右键 → 对象类型 / 选择对象 |
+| 改计数模式 | 右键 → 模式（正计日、倒计日、周年计数等 6 种） |
+| 改纪念日日期 | 右键 → 修改时间… |
+| 立即同步 | 右键 → 马上刷新最新数据（默认每 60 秒自动拉取） |
+| 复制同款窗口 | 右键 → 复制窗口 |
+| 资产次数 +1 | 「使用次数计费」的资产卡：**单击卡片右下角图标** |
+| 资产次数 −1 | **长按图标 0.6 秒**，在确认窗中确认 |
+| 置顶 / 迷你 / 排版 | 均在右键菜单中 |
+
+### 开机后自动显示
+
+小组件是普通 App，加入登录项即可开机自启：
+
+1. 打开 **系统设置 → 通用 → 登录项与扩展**；
+2. 在「登录时打开」下点 **＋**，选择「应用程序」里的 `CountdownWidget.app`；
+3. 开机登录后会自动出现**一个**默认窗口。想要多个固定窗口，当前可用「复制窗口」开好后保持窗口配置（登录项只会自启一个 App 进程；双击 App 图标可随时再加新窗口）。
+
+### 卸载
+
+1. 先在卡片上右键 → 关闭此窗口（或直接退出进程），删除「应用程序」中的 `CountdownWidget.app`；
+2. 如需同时清除授权与窗口配置，删除目录 `~/.whynownote/`（含 API Key 与各窗口配置，不可恢复）；
+3. Anytype 侧在 **设置 → API Keys** 中删除对应 Key。
+
+### 常见问题
+
+**卡片只显示 `--` 或一直空白？**
+确认 Anytype 桌面端正在运行且已登录；小组件依赖它的本地 API。然后右键 → 马上刷新最新数据。检查 API Key 是否仍有效（在 Anytype 设置 → API Keys 中查看），失效就重新生成并再跑一次第 4 步的 `init`。
+
+**双击 App 没反应？**
+组件没有 Dock 图标，请看桌面上是否多了悬浮卡；App 已在运行时再次双击会**新开一个窗口**。若所有窗口都找不到，见下一条。
+
+**重启后窗口「消失」了？**
+窗口可能停在已拔掉的外接显示器坐标上——v1.0.0 起启动时会检测，落在屏幕外的窗口自动回到主屏右上角。仍异常时可删除 `~/.whynownote/widgets/` 下对应实例配置后重开。
+
+**手机/其他设备上改的数据会更新吗？**
+会。数据通过 any-sync 同步到运行官方客户端的这台 Mac，卡片最多 60 秒内跟上（右键可立即刷新）。
+
+**会上传我的数据吗？**
+不会。App 只访问 `127.0.0.1:31009` 本机接口，API Key 与配置只存在本机 `~/.whynownote/`。
+
+## 功能参考（桌面小组件）
 
 **每个窗口 = 一个独立实例 = 绑定一个对象（纪念日 / 资产）或一个聚合面板。** 可多开、各自独立。
 
@@ -83,50 +181,36 @@ ln -s "$PWD/anniversary.py" /usr/local/bin/anniversary   # 或 ln 到 ~/bin 等 
 
 > 说明：倒计模式是「绝对倒数」——只有目标时间在未来才有值；目标是过去时间时显示 0。想看"已经过了多久"请用正计模式。
 
-## 下载安装（推荐，无需编译）
+## 命令行（终端敲 `anniversary`）
 
-**环境要求**：Apple Silicon（M 系列）Mac、macOS 12 或更高；安装并登录 [Anytype 桌面端](https://anytype.io/)，且已在授权向导中启用本地 API。
-
-### 1. 下载应用
-
-到 [Releases](https://github.com/raysico/anytypeWidget/releases) 下载最新的 `CountdownWidget-vX.Y.Z-macOS.zip`，解压后把 `CountdownWidget.app` 拖进「应用程序」文件夹。
-
-### 2. 首次打开（处理安全提示）
-
-应用使用本地自签名（ad-hoc），未经过 Apple 公证，首次双击会提示「无法验证开发者」。任选其一放行：
-
-- **图形方式**：在「应用程序」里**右键点 `CountdownWidget.app` → 打开 → 再点「打开」**（只需一次，之后可正常双击）。
-- **命令行方式**：
+命令行是高级/调试入口，日常只看卡片可以跳过本节。脚本仅依赖 Python 3 标准库，无需 pip 安装任何包。
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/CountdownWidget.app
+anniversary init [--api-key KEY] [--space-id ID]   # 初始化配置（首次使用）
+anniversary objects [类型key]          # 列对象（缺省纪念日；zi_chan=资产，ju_he_mian_ban=聚合面板）
+anniversary read-object <id>           # 读单个对象：{name, date_iso, color, icon, 偏好…}
+anniversary set-date <id> "2026-12-25 08:00"   # 改「纪念日日期」字段（本地时间）
+anniversary icon-image <id> [输出路径] # 取对象图标（file→下载图片；emoji→返回emoji）
+anniversary set-size <id> <宽> <高>    # 把当前宽度/当前高度写回对象
+anniversary set-mini <id> <是|否>      # 写回对象「迷你模式」字段
+anniversary inc-uses <id> [增量]       # 资产使用次数 +N（减一传 -1，默认 1）
+anniversary types                      # 列空间内所有对象类型
+anniversary widget <对象名> [模式]     # 开一个新小组件窗口绑定该对象
+anniversary panel [面板名]             # 开一个聚合面板窗口(会在anytype回写新建一个类型为“聚合面板”的对象)
+anniversary panel-data <面板id>        # 读面板配置 + 成员行数据
+anniversary panel-set <面板id> '<属性json>'       # 改面板属性（排序/筛选/限制数量等）
+anniversary panel-set-types <面板id> <类型key逗号列表>  # 改面板成员类型
+anniversary new-panel [名称]           # 新建聚合面板对象
 ```
 
-> 应用是无 Dock 图标的后台悬浮组件（`LSUIElement`），启动后只看到桌面上的悬浮卡，Dock 中不会出现图标。
+模式：`正计日`（已经多少天）/ `倒计日`（还有多少天）/ `正计时`（多少小时）/ `倒计时`（还有多少小时）/ `周年计数`（已经多少周年）/ `最近重复日`（下一个同月日还有多少天）。
 
-### 3. 一次性授权（连接 Anytype）
-
-首次使用需要配置本地 API Key。发布包已内置 `anniversary.py`，直接执行：
+从源码使用时安装到 PATH：
 
 ```bash
-/usr/bin/python3 /Applications/CountdownWidget.app/Contents/Resources/anniversary.py init --api-key <你的API Key>
+chmod +x anniversary.py
+ln -s "$PWD/anniversary.py" /usr/local/bin/anniversary   # 或 ln 到 ~/bin 等 PATH 目录
 ```
-
-按提示在 Anytype 桌面端完成一次性授权（输入 4 位验证码）。配置保存在 `~/.whynownote/wnn.json`（权限 600）。
-
-想在终端直接敲 `anniversary` 命令，可加软链（可选）：
-
-```bash
-ln -s /Applications/CountdownWidget.app/Contents/Resources/anniversary.py /usr/local/bin/anniversary
-```
-
-### 4. 启动与多开
-
-- **双击 `CountdownWidget.app`** 即出现一个悬浮小组件窗口（默认绑定空间里第一个纪念日对象，可右键改绑）；
-- **再次双击会再开一个新窗口**，每个窗口独立绑定对象、独立配置，想多开几个都行；
-- 窗口配置自动保存在 `~/.whynownote/widgets/<实例id>.json`。
-
-> **找不到窗口？** 若之前接过外接显示器，窗口可能停在已不存在的屏幕坐标上——v1.0.0 起启动时会检测，落在屏幕外的窗口自动回到主屏右上角。
 
 ## 从源码构建
 
@@ -162,6 +246,7 @@ ditto -c -k --keepParent CountdownWidget.app CountdownWidget-v1.0.0-macOS.zip
 4. `.app` 包上一级目录（`.app` 放在仓库根时）
 5. `.app` 包根目录
 6. PATH 中的 `anniversary` 命令（如上面的软链）
+7. 兜底：当前工作目录下的 `anniversary.py`
 
 ## 文件
 
@@ -175,11 +260,6 @@ ditto -c -k --keepParent CountdownWidget.app CountdownWidget-v1.0.0-macOS.zip
 | `~/.whynownote/wnn.json`       | API 配置（权限 600，别外传）                       |
 | `~/.whynownote/widgets/*.json` | 各实例配置                                    |
 
-## 前提
-
-- **Anytype 桌面端必须正在运行**。
-- 首次授权：桌面端输入 4 位验证码（一次性）。
-
 ## 架构
 
 ```
@@ -190,4 +270,3 @@ ditto -c -k --keepParent CountdownWidget.app CountdownWidget-v1.0.0-macOS.zip
    ┌──────┬──────────┐
  anniversary 命令  小组件实例1  小组件实例2 …
 ```
-
