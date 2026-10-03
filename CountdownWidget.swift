@@ -1242,20 +1242,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func toggleMini(_ s: NSMenuItem) {
         miniMode.toggle()
-        let f = window.frame
-        if miniMode {
-            // 进入迷你：记住普通尺寸，把高度收紧为贴合单行（只留横向拉伸）
-            normalW = f.width; normalH = f.height
-            var w = f.width
-            w = min(max(w, 160), 800)
-            window.setFrame(NSRect(x: f.minX, y: f.maxY - MINI_HEIGHT, width: w, height: MINI_HEIGHT), display: true)
-        } else {
-            // 退出迷你：恢复普通尺寸
-            var w = normalW > 0 ? normalW : 240
-            var h = normalH > 0 ? normalH : 164
-            w = min(max(w, 150), 800); h = min(max(h, 150), 600)
-            window.setFrame(NSRect(x: f.minX, y: f.minY, width: w, height: h), display: true)
-        }
+        // 进入迷你：记住普通尺寸并收紧为单行；退出迷你：恢复普通尺寸
+        syncWindowForMini()
         saveConfig()
         applyLayout()
         // 迷你模式改动回写 Anytype（纪念日/资产对象均有 mi_ni_mo_shi select 字段）
@@ -1461,17 +1449,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // 绑定的是资产对象 → 资产形态
             if (obj["type"] as? String) == ASSET_TYPE_KEY {
                 if aggMode { switchPanelChrome(false) }
-                if !isAsset { switchSingleChrome(true) }
                 assetData = obj
                 objectName = obj["name"] as? String ?? ""
                 currentType = ASSET_TYPE_KEY
                 color = colorFromHex(obj["color"] as? String ?? "#FFFFFF")
                 lastIcon = obj["icon"]
                 lastFetch = Date()
+                // 先同步对象偏好（可能翻转迷你标志），再按最终形态安装 chrome 与调整窗口，
+                // 否则会用旧迷你标志装错视图层级（如迷你启动、对象已取消迷你时卡成占位画面）
+                let miniFlipped = applyObjectPrefs(obj)
+                if miniFlipped { syncWindowForMini() }
+                if !isAsset { switchSingleChrome(true) }
                 // 普通模式：毛玻璃 + 右侧方形图标；迷你模式不展示图标，跳过下载
                 glass.isHidden = false; bgLayer.isHidden = true; emojiBgLabel.isHidden = true
                 if !miniMode { applyAssetIcon(lastIcon as? [String: Any]) }
-                applyObjectPrefs(obj)
                 applyLayout()
                 renderAsset()
                 resizeAssetWindow()
@@ -1490,7 +1481,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             numberLabel.textColor = color
             if let d = parseISO(iso) { target = d } else { target = nil }
             currentType = obj["type"] as? String
-            applyObjectPrefs(obj)
+            // 对象偏好可能翻转迷你标志：同步窗口尺寸，避免迷你窗口里塞纵向大字布局
+            let miniFlipped = applyObjectPrefs(obj)
+            if miniFlipped { syncWindowForMini() }
             lastFetch = Date()
             lastIcon = obj["icon"]
             applyLayout()
@@ -1510,10 +1503,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // 对象偏好默认值（Anytype 里配置）：首次绑定某对象时应用 默认模式/迷你模式/资产计费方式
-    func applyObjectPrefs(_ obj: [String: Any]) {
-        guard let oid = objectId, prefAppliedObject != oid else { return }
+    // 返回迷你标志是否被对象偏好翻转（调用方需据此同步窗口尺寸与 chrome）
+    @discardableResult
+    func applyObjectPrefs(_ obj: [String: Any]) -> Bool {
+        guard let oid = objectId, prefAppliedObject != oid else { return false }
         prefAppliedObject = oid
         var changed = false
+        var miniFlipped = false
         // 纪念日：未手动覆盖时才跟随对象 mo_shi；资产：未手动指定时才跟随 mo_ren_mo_shi
         if !modeManual {
             if let arr = obj["mo_shi"] as? [String], let first = arr.first,
@@ -1528,9 +1524,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let arr = obj["mi_ni_mo_shi"] as? [String], let first = arr.first {
             let wantMini = (first == "是")
-            if miniMode != wantMini { miniMode = wantMini; changed = true }
+            if miniMode != wantMini { miniMode = wantMini; changed = true; miniFlipped = true }
         }
         if changed { saveConfig() }
+        return miniFlipped
     }
 
     // 把当前窗口尺寸写回对象「当前宽度/当前高度」（拖拽/缩放结束；面板与资产不写）
@@ -1876,6 +1873,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let ww = min(max(f.width, 160), 800)
         w.setFrame(NSRect(x: f.minX, y: f.maxY - MINI_HEIGHT, width: ww, height: MINI_HEIGHT),
                    display: true)
+    }
+
+    // 按当前 miniMode 同步窗口尺寸：进入迷你记住普通尺寸并收紧为单行高；
+    // 退出迷你恢复普通尺寸（菜单切换与对象偏好翻转共用，避免两条路径行为不一致）
+    func syncWindowForMini() {
+        guard let w = window else { return }
+        let f = w.frame
+        if miniMode {
+            normalW = f.width; normalH = f.height
+            let ww = min(max(f.width, 160), 800)
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - MINI_HEIGHT, width: ww, height: MINI_HEIGHT),
+                       display: true)
+        } else {
+            let ww = normalW > 0 ? normalW : max(windowSizeW, 240)
+            let hh = normalH > 0 ? normalH : max(windowSizeH, 164)
+            let nw = min(max(ww, 150), 800), nh = min(max(hh, 150), 600)
+            w.setFrame(NSRect(x: f.minX, y: f.minY, width: nw, height: nh), display: true)
+        }
     }
 
     // 单对象窗口：纪念日视图 ⇄ 资产视图（不涉及聚合面板）
