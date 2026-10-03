@@ -1,5 +1,9 @@
 # 纪念日、资产anytypeMacOS桌面组件（可基于any-sync网络同步数据）
 
+<p align="center">
+  <img src="docs/hero.png" width="880" alt="纪念日 / 资产 / 聚合面板桌面小组件效果展示" />
+</p>
+
 一组真正「跑在 any-sync 上」的桌面悬浮小组件：
 
 - **数据存哪**：每个纪念日/资产是一个 **Anytype 对象**（纪念日类型 `ji_nian_ri`、资产类型 `zi_chan`，聚合面板类型 `ju_he_mian_ban`），存放在官方客户端正在同步的空间里。官方客户端通过 your 部署的 any-sync 网络把对象同步到所有设备。
